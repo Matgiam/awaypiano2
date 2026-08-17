@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/*
+ * Solo Resonance design tokens.
+ *
+ * The app is dark-only by design: a piano visualiser with glowing note trails
+ * needs a consistently dark ground for the trails to read against, so we do not
+ * expose a light theme. Colours are declared once here and consumed through
+ * Tailwind utilities (`bg-surface`, `text-muted`, ...).
+ */
+@theme {
+  /* Ground: near-black with a faint blue cast so it never looks muddy. */
+  --color-void: #07070a;
+  --color-ink: #0c0c11;
+  --color-surface: #121219;
+  --color-surface-raised: #1a1a24;
+
+  /* Hairlines. Kept very low contrast — structure should be felt, not seen. */
+  --color-edge: #23232f;
+  --color-edge-bright: #32323f;
+
+  /* Type. */
+  --color-bright: #f4f4f7;
+  --color-muted: #9a9aab;
+  --color-faint: #62626f;
+
+  /* Accents. Indigo carries the brand; teal marks "live"/ready states. */
+  --color-accent: #8b7cf6;
+  --color-accent-dim: #6d5fd4;
+  --color-signal: #2dd4bf;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  background-color: var(--color-void);
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-void);
+  color: var(--color-bright);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Ambient glow behind the page content. Rendered as a fixed pseudo-element so it
+ * never participates in layout or scrolling, and stays behind the canvas that
+ * Phase 4 will introduce.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      60rem 32rem at 50% -8rem,
+      color-mix(in oklab, var(--color-accent) 18%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      40rem 24rem at 85% 10%,
+      color-mix(in oklab, var(--color-signal) 7%, transparent),
+      transparent 70%
+    );
+}
+
+/* Tabular numerals keep stat tiles from jittering as values update. */
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

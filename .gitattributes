@@ -1,0 +1,12 @@
+# Soundfont binaries are large (~189 MB across 92 files) and never diff usefully.
+# Store them in Git LFS so the repository history stays lightweight.
+*.sf2 filter=lfs diff=lfs merge=lfs -text
+*.sf3 filter=lfs diff=lfs merge=lfs -text
+
+# Normalise line endings for source so Windows/macOS collaborators don't churn diffs.
+* text=auto eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.css  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
