@@ -29,6 +29,69 @@ const WORKLET_URL = "/worklets/spessasynth_processor.min.js";
 /** Every bank is loaded under this id, replacing whatever was there before. */
 const BANK_ID = "main";
 
+/**
+ * Ceiling on how long the worklet may take to install a bank.
+ * Without this, a bank the parser chokes on leaves the UI spinning forever
+ * because the promise simply never settles.
+ */
+const BANK_INSTALL_TIMEOUT_MS = 30_000;
+
+/** Rejects if `promise` has not settled within `ms`. */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
+/**
+ * Rejects anything that is not a real SoundFont before it reaches the parser.
+ *
+ * The common failure in production is a static host serving Git LFS pointer
+ * files — a 133-byte text stub — in place of the binary. Handing that to the
+ * synthesizer produces an unhelpful hang, so it is caught here with a message
+ * that names the actual cause.
+ */
+function assertValidSoundBank(buffer: ArrayBuffer, name: string): void {
+  const bytes = new Uint8Array(buffer);
+
+  if (bytes.length < 12) {
+    throw new Error(
+      `“${name}” is only ${bytes.length} bytes — that is not a sound bank.`,
+    );
+  }
+
+  const preamble = String.fromCharCode(...bytes.subarray(0, 45));
+  if (preamble.startsWith("version https://git-lfs")) {
+    throw new Error(
+      `“${name}” was served as a Git LFS pointer (${bytes.length} bytes) instead of the real file. ` +
+        `The host is not resolving LFS objects — commit the soundfonts as regular files or serve them from object storage.`,
+    );
+  }
+
+  // Every SoundFont2/SoundFont3 bank is a RIFF container of form "sfbk".
+  const riff = String.fromCharCode(...bytes.subarray(0, 4));
+  const form = String.fromCharCode(...bytes.subarray(8, 12));
+  if (riff !== "RIFF" || form !== "sfbk") {
+    throw new Error(
+      `“${name}” is not a valid SoundFont: expected a RIFF/sfbk header, got “${riff}”/“${form}” (${bytes.length} bytes).`,
+    );
+  }
+}
+
 export type EngineStatus =
   | "idle"
   | "starting"
@@ -240,7 +303,14 @@ export class PianoEngine {
       // A newer load started while this one was in flight — discard it.
       if (token !== this.#loadToken) return;
 
-      await synth.soundBankManager.addSoundBank(buffer, BANK_ID);
+      // Fail fast and legibly rather than handing junk to the parser.
+      assertValidSoundBank(buffer, entry.name);
+
+      await withTimeout(
+        synth.soundBankManager.addSoundBank(buffer, BANK_ID),
+        BANK_INSTALL_TIMEOUT_MS,
+        `Timed out installing “${entry.name}” after ${BANK_INSTALL_TIMEOUT_MS / 1000}s.`,
+      );
       if (token !== this.#loadToken) return;
 
       const presetName = this.#selectFirstPreset(synth);

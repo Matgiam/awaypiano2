@@ -43,3 +43,8 @@ next-env.d.ts
 # Copied from node_modules by scripts/sync-worklet.mjs on predev/prebuild.
 # Derived artifact — committing it risks serving a stale processor version.
 /public/worklets/
+
+# The other 83 instrument banks (151 MB), kept on disk but out of the repo so
+# deployments stay small. Drop any of them into public/assets/soundfonts/ and
+# run `npm run soundfonts:manifest` to add them back to the app.
+/soundfont-library/

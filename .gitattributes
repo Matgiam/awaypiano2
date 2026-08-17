@@ -1,7 +1,11 @@
-# Soundfont binaries are large (~189 MB across 92 files) and never diff usefully.
-# Store them in Git LFS so the repository history stays lightweight.
-*.sf2 filter=lfs diff=lfs merge=lfs -text
-*.sf3 filter=lfs diff=lfs merge=lfs -text
+# NOTE: soundfonts are deliberately NOT tracked with Git LFS.
+#
+# Vercel (like Netlify and Cloudflare Pages) clones the repository without
+# resolving LFS objects, so LFS-tracked binaries deploy as ~133-byte pointer
+# stubs and the synthesizer receives text instead of audio. The nine keyboard
+# banks in public/assets/soundfonts are committed as ordinary binary files.
+*.sf2 -text
+*.sf3 -text
 
 # Normalise line endings for source so Windows/macOS collaborators don't churn diffs.
 * text=auto eol=lf
