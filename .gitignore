@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Copied from node_modules by scripts/sync-worklet.mjs on predev/prebuild.
+# Derived artifact — committing it risks serving a stale processor version.
+/public/worklets/

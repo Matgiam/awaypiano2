@@ -74,3 +74,72 @@ body::before {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Piano keys.
+ *
+ * Styled in CSS rather than Tailwind because the active state is driven by a
+ * `data-active` attribute written directly by the audio engine, and the glow
+ * colour arrives as a per-key custom property (`--key-glow`).
+ */
+.piano-key {
+  --key-glow: var(--color-accent);
+  border-radius: 0 0 4px 4px;
+  transition:
+    filter 90ms ease-out,
+    transform 90ms ease-out;
+}
+
+.piano-key--white {
+  background: linear-gradient(180deg, #fdfdff 0%, #ececf2 72%, #d6d6e0 100%);
+  border-left: 1px solid rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 -3px 6px rgba(0, 0, 0, 0.12);
+  z-index: 1;
+}
+
+.piano-key--black {
+  background: linear-gradient(180deg, #2a2a36 0%, #131319 58%, #06060a 100%);
+  border-radius: 0 0 3px 3px;
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.65),
+    inset 0 -2px 3px rgba(255, 255, 255, 0.09);
+  z-index: 2;
+}
+
+/* Pressed: tint toward the note's own hue and sink the key slightly. */
+.piano-key--white[data-active="true"] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--key-glow) 34%, #ffffff) 0%,
+    color-mix(in oklab, var(--key-glow) 62%, #ffffff) 100%
+  );
+  box-shadow:
+    inset 0 -3px 8px rgba(0, 0, 0, 0.16),
+    0 0 18px -2px var(--key-glow);
+  transform: scaleY(0.985);
+  transform-origin: top;
+}
+
+.piano-key--black[data-active="true"] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--key-glow) 55%, #1a1a22) 0%,
+    color-mix(in oklab, var(--key-glow) 88%, #05050a) 100%
+  );
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.6),
+    0 0 16px -1px var(--key-glow);
+  transform: scaleY(0.975);
+  transform-origin: top;
+}
+
+/* Thin luminous seam where the trails meet the keys. */
+.keybed-seam {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--color-accent) 55%, transparent),
+    color-mix(in oklab, var(--color-signal) 45%, transparent),
+    transparent
+  );
+}

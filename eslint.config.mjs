@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Static assets, including the minified spessasynth worklet copied in by
+    // scripts/sync-worklet.mjs. Third-party build output, not our source.
+    "public/**",
   ]),
 ]);
 

@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/sync-worklet.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/sync-worklet.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "worklet:sync": "node scripts/sync-worklet.mjs",
     "soundfonts:manifest": "node scripts/generate-soundfont-manifest.mjs"
   },
   "dependencies": {
