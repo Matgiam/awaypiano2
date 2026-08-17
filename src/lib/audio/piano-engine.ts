@@ -30,6 +30,19 @@ const WORKLET_URL = "/worklets/spessasynth_processor.min.js";
 const BANK_ID = "main";
 
 /**
+ * Gain applied at the top of the volume slider.
+ *
+ * The synthesizer renders conservatively — a single note at full velocity peaks
+ * around -14 dBFS — which leaves the instrument sounding thin at unity gain.
+ * 4x (~+12 dB) brings a solo piano up to a normal listening level; the limiter
+ * below is what makes that safe when a big chord sums.
+ */
+const MAX_MASTER_GAIN = 4;
+
+/** Slider position on first run. */
+const DEFAULT_VOLUME = 0.8;
+
+/**
  * Ceiling on how long the worklet may take to install a bank.
  * Without this, a bank the parser chokes on leaves the UI spinning forever
  * because the promise simply never settles.
@@ -141,6 +154,9 @@ export interface EngineSnapshot {
   readonly tuningHz: number;
   /** The same offset expressed in cents, which is what the synth consumes. */
   readonly tuningCents: number;
+  /** Slider position, 0..1. Not the raw gain — see MAX_MASTER_GAIN. */
+  readonly volume: number;
+  readonly muted: boolean;
 }
 
 const INITIAL_SNAPSHOT: EngineSnapshot = Object.freeze({
@@ -157,12 +173,15 @@ const INITIAL_SNAPSHOT: EngineSnapshot = Object.freeze({
   sustainDown: false,
   tuningHz: TUNING_DEFAULT_HZ,
   tuningCents: 0,
+  volume: DEFAULT_VOLUME,
+  muted: false,
 });
 
 export class PianoEngine {
   #context: AudioContext | null = null;
   #synth: WorkletSynthesizer | null = null;
   #masterGain: GainNode | null = null;
+  #limiter: DynamicsCompressorNode | null = null;
 
   #snapshot: EngineSnapshot = INITIAL_SNAPSHOT;
   #listeners = new Set<() => void>();
@@ -178,6 +197,9 @@ export class PianoEngine {
    * always begins at concert pitch, so the desired tuning is re-applied to it.
    */
   #tuningHz = TUNING_DEFAULT_HZ;
+  /** Also survives restarts — volume is a user preference, not engine state. */
+  #volume = DEFAULT_VOLUME;
+  #muted = false;
 
   // --- external store plumbing -------------------------------------------
 
@@ -260,17 +282,32 @@ export class PianoEngine {
     synth.eventHandler.timeDelay = 0;
     await synth.isReady;
 
+    // Signal chain: synth -> master gain -> limiter -> speakers.
     const masterGain = context.createGain();
-    masterGain.gain.value = 1;
+    masterGain.gain.value = 0;
+
+    // Configured as a brick-wall limiter rather than a musical compressor: it
+    // should be inaudible on single notes and only intervene when a dense
+    // chord at high gain would otherwise clip.
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+
     synth.connect(masterGain);
-    masterGain.connect(context.destination);
+    masterGain.connect(limiter);
+    limiter.connect(context.destination);
 
     this.#context = context;
     this.#synth = synth;
     this.#masterGain = masterGain;
+    this.#limiter = limiter;
 
-    // A new synthesizer starts at concert pitch; restore the chosen tuning.
+    // A new synthesizer starts at concert pitch and silent; restore both.
     this.#applyTuning();
+    this.#applyVolume(0);
 
     this.#patch({
       status: "ready",
@@ -493,14 +530,52 @@ export class PianoEngine {
     this.setSustain(false);
   }
 
+  // --- output level --------------------------------------------------------
+
+  /**
+   * Sets the master volume from a 0..1 slider position.
+   *
+   * The position is squared before being scaled to gain. A linear slider feels
+   * wrong on a volume control — loudness is roughly logarithmic, so a linear
+   * taper crams every useful setting into the bottom of the travel.
+   */
   setMasterVolume(volume: number): void {
+    const v = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0;
+    this.#volume = v;
+    // Any deliberate volume change also lifts mute — otherwise dragging the
+    // slider while muted does nothing visible and feels broken.
+    if (this.#muted && v > 0) this.#muted = false;
+    this.#applyVolume();
+    this.#patch({ volume: v, muted: this.#muted });
+  }
+
+  setMuted(muted: boolean): void {
+    this.#muted = muted;
+    this.#applyVolume();
+    this.#patch({ muted });
+  }
+
+  toggleMute(): void {
+    this.setMuted(!this.#muted);
+  }
+
+  /**
+   * Pushes the stored level onto the gain node.
+   * @param rampSeconds Time constant for the ramp; an instant jump clicks.
+   */
+  #applyVolume(rampSeconds = 0.015): void {
     if (!this.#masterGain || !this.#context) return;
-    // Ramp rather than jump; an instant gain change is an audible click.
+    const target = this.#muted ? 0 : this.#volume ** 2 * MAX_MASTER_GAIN;
     this.#masterGain.gain.setTargetAtTime(
-      Math.max(0, Math.min(1, volume)),
+      target,
       this.#context.currentTime,
-      0.01,
+      Math.max(0.001, rampSeconds),
     );
+  }
+
+  /** Gain reduction the limiter is currently applying, in dB (<= 0). */
+  getGainReduction(): number {
+    return this.#limiter?.reduction ?? 0;
   }
 
   // --- read-only accessors, polled by rAF rather than subscribed to --------
@@ -524,21 +599,25 @@ export class PianoEngine {
     try {
       this.#synth?.destroy();
       this.#masterGain?.disconnect();
+      this.#limiter?.disconnect();
       await this.#context?.close();
     } catch {
       // Teardown races with an in-flight start are not worth surfacing.
     }
     this.#synth = null;
     this.#masterGain = null;
+    this.#limiter = null;
     this.#context = null;
     this.#activeNotes.clear();
     this.#startPromise = null;
-    // The chosen tuning is a user preference, not engine state — it survives a
-    // restart and is re-applied to the next synthesizer.
+    // Tuning and volume are user preferences, not engine state — they survive a
+    // restart and are re-applied to the next synthesizer.
     this.#patch({
       ...INITIAL_SNAPSHOT,
       tuningHz: this.#tuningHz,
       tuningCents: tuningCentsFor(this.#tuningHz),
+      volume: this.#volume,
+      muted: this.#muted,
     });
   }
 }

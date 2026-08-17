@@ -13,6 +13,7 @@ import { useComputerKeyboard } from "@/hooks/useComputerKeyboard";
 import { NoteTrails } from "@/components/NoteTrails";
 import { PianoKeyboard } from "@/components/PianoKeyboard";
 import { TuningControl } from "@/components/TuningControl";
+import { VolumeControl } from "@/components/VolumeControl";
 
 /**
  * The instrument.
@@ -119,6 +120,12 @@ export function PianoStudio() {
           engine={engine}
           tuningHz={snapshot.tuningHz}
           tuningCents={snapshot.tuningCents}
+        />
+
+        <VolumeControl
+          engine={engine}
+          volume={snapshot.volume}
+          muted={snapshot.muted}
         />
 
         <label className="flex items-center gap-2 text-xs text-faint">
